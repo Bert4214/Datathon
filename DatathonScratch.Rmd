@@ -1,0 +1,251 @@
+---
+title: "Datathon Work"
+author: "Barrett Ray"
+date: "2022-11-16"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(regclass)
+library(ggplot2)
+library(gridExtra)
+library(corrplot)
+
+Mortgage_Rate = Mortgage %>% 
+                inner_join(Zip,by='Year') 
+
+Time_Combined = RITime %>% 
+                inner_join(VITime, by='ind')  # Vector memory exhausted 
+
+
+### Create the total RI table
+RITime = RITime %>% 
+          mutate(RegionName = as.integer(RegionName))
+
+RI_fixed = RIRegion %>% 
+            inner_join(RITime, by = c('RegionID'='RegionName'))
+
+colnames(RI_fixed)[9] <- 'RentInd'
+colnames(RI_fixed)[10] <- 'date'
+colnames(RI_fixed)
+
+
+### Create the total VI table
+VITime = VITime %>% 
+          mutate(RegionName = as.integer(RegionName))
+
+VI_fixed = VIRegion %>% 
+            inner_join(VITime, by = c('RegionID'='RegionName'))
+
+colnames(VI_fixed)[9] <- 'ValInd'
+colnames(VI_fixed)[10] <- 'date'
+colnames(VI_fixed)
+
+
+### Total Data of VI and RI 
+
+FinalDatIndexes = merge(VI_fixed,RI_fixed) %>% 
+                  arrange(SizeRank)
+FinalDatIndexes$StateName <- NULL
+
+
+#####
+Rate_Sample <- as.numeric(sample(Mortgage_Rate$Rate,size=1000, replace = FALSE))
+Income_Sample <- as.numeric(sample(Mortgage_Rate$Median_Income_USD,size=1000, replace = FALSE))
+df <- data.frame(Rate_Sample,Income_Sample)
+model <- lm(Rate_Sample ~ Income_Sample, data=df)
+summary(model)
+
+```
+
+
+```{r}
+#df <- read.csv('DatathonData.csv')
+#df <- df %>% 
+# mutate(MonthMortgage = (MortgageRate/100) * VI / 12)
+
+RI_Sample <- as.numeric(sample(df$RI,size=10000,replace=FALSE))
+Income_Sample <- as.numeric(sample(df$Median_Income_USD,size=10000,replace=FALSE))
+Mortgage_Sample <- as.numeric(sample(df$MonthMortgage,size=10000,replace=FALSE))
+df_new <- data.frame(RI_Sample,Income_Sample,Mortgage_Sample)
+
+train <- df[1:50000,]
+train$Median_Income_USD <- as.numeric(train$Median_Income_USD)
+
+hist(train$MonthMortgage)
+hist(log(train$MonthMortgage))
+
+model1 <- lm(MonthMortgage ~ RI + Median_Income_USD, data = train, na.action = na.exclude)
+summary(model1)
+
+model2 <- lm(log(MonthMortgage) ~ log(RI) + log(Median_Income_USD), data = train, na.action = na.exclude)
+summary(model2)
+
+######### Regressions
+
+#df_calculation <- read.csv('DatathonNARAfford.csv')
+# df_calculation = df_calculation %>% 
+#   mutate(MonthMortgage = (MortgageRate/100) * VI / 12)
+
+train2 <- df_calculation[1:50000,]
+str(train2)
+
+hist(train2$NARAfford)
+hist(log(train2$NARAfford))
+
+hist(df_calculation$NARAfford, freq=FALSE)
+hist(log(df_calculation$NARAfford), freq = FALSE)
+
+
+model3 <- lm(log(NARAfford) ~ log(RI) + log(MonthMortgage), data=train2, na.action = na.exclude)
+summary(model3)  # R^2 = 0.7687
+
+model4 <- lm(NARAfford ~ RI + MonthMortgage, data=train2, na.action = na.exclude)
+summary(model4)  # R^2 = 0.3113
+
+model5 <- lm(NARAfford ~ MortgageRate + Median_Income_USD, data=train2, na.action = na.exclude)
+summary(model5)  # R^2 = 0.2054
+
+model6 <- lm(log(NARAfford) ~ log(MortgageRate) + log(Median_Income_USD), data=train2, na.action = na.exclude)
+summary(model6)  # R^2 = 0.2235
+
+# Using all data
+model7 <- lm(NARAfford ~ RI + MonthMortgage, data = df_calculation, na.action = na.exclude)
+summary(model7)  # R^2 = 0.153
+
+model8 <- lm(log(NARAfford) ~ log(RI) + log(MonthMortgage), data=df_calculation, na.action = na.exclude)
+summary(model8)  #R^2 = 0.7945
+
+model9 <- lm(NARAfford ~ SizeRank, data = df_calculation, na.action = na.exclude)
+summary(model9)  # R^2 = 0.000457
+
+model10 <- lm(log(NARAfford) ~ log(SizeRank), data = df_calculation, na.action = na.exclude)
+summary(model10)  # R^2 = 0.002429
+
+model11 <- lm(log(NARAfford) ~ log(SizeRank) + log(RI) + log(MonthMortgage), data = df_calculation, na.action = na.exclude)
+summary(model11)  # R^2 = 0.7946
+
+model12 <- lm(NARAfford ~ SizeRank + RI + MonthMortgage + Median_Income_USD + Households, data=df_calculation, na.action=na.exclude)
+summary(model12)  # R^2 = 0.3064
+
+model13 <- lm(log(NARAfford) ~ log(SizeRank) + log(RI) + log(MonthMortgage) + log(Median_Income_USD) + log(Households), data=df_calculation, na.action=na.exclude)
+summary(model13)  # R^2 = 0.9947....not realistic
+
+###### Correlation Matrix 
+CorrMatrix <- cor(na.omit(train2[,-c(5:8)]))
+CorrMatrix <- cor(na.omit(df_calculation[,-c(5:8)]))
+corrplot(CorrMatrix, type = "upper", method = "number", tl.col = "black", order = "hclust")
+
+
+###### Association and Boxplots
+ggplot(train2, aes(x=RI, y=MonthMortgage)) + geom_point() + geom_smooth()
+
+Mortgage_Box <- ggplot(train2, aes(x=as.factor(Year), y=MonthMortgage)) + geom_boxplot()
+RI_Box <- ggplot(train2, aes(x=as.factor(Year), y=RI)) + geom_boxplot()
+grid.arrange(Mortgage_Box, RI_Box)
+
+# With ALL data
+ggplot(df_calculation, aes(x=RI, y=MonthMortgage)) + geom_point() 
+
+Mortgage_Box <- ggplot(df_calculation, aes(x=as.factor(Year), y=MonthMortgage)) + geom_boxplot()
+RI_Box <- ggplot(df_calculation, aes(x=as.factor(Year), y=RI)) + geom_boxplot()
+grid.arrange(Mortgage_Box, RI_Box)  # Looks like the RI has relatively constant variance 
+
+######
+
+State_Mort <- df_calculation %>% 
+                group_by(State, Year) %>% 
+                summarize(AvgMort = mean(MonthMortgage,na.rm=TRUE))
+
+ggplot(State_Mort, aes(x=Year,y=AvgMort,color=State)) + geom_line() + geom_label(aes(label=State))
+
+######
+
+City_Metrics = df_calculation %>% 
+                group_by(Metro, Year) %>% 
+                summarise(MeanRI = mean(RI, na.rm = TRUE),
+                          MeanMort = mean(MonthMortgage, na.rm = TRUE),
+                          MeanNAR = mean(NARAfford, na.rm = TRUE)) %>% 
+                arrange(desc(MeanNAR))
+
+City_Metrics_Avg = City_Metrics %>% 
+                    group_by(Metro) %>% 
+                    summarise(MeanRI = mean(MeanRI, na.rm = TRUE),
+                          MeanMort = mean(MeanMort, na.rm = TRUE),
+                          MeanNAR = mean(MeanNAR, na.rm = TRUE)) %>% 
+                    arrange(desc(MeanNAR))
+
+head(City_Metrics_Avg,5)
+tail(City_Metrics_Avg,10)
+
+City_NAR_Time <- City_Metrics %>% 
+                 filter(Metro %in% c("Altus, OK", 
+                                     "Evansville, IN-KY",
+                                     "Beaumont-Port Arthur, TX",
+                                     "Macon-Bibb County, GA",
+                                     "Cleveland-Elyria, OH",
+                                     "Key West, FL",
+                                     "San Francisco-Oakland-Berkeley, CA",
+                                     "Santa Maria-Santa Barbara, CA",
+                                     "Trenton-Princeton, NJ",
+                                     "Urban Honolulu, HI"))
+
+ggplot(City_NAR_Time, aes(x=Year,y=MeanNAR,color=Metro)) + geom_line()
+ggplot(City_NAR_Time, aes(x=Year,y=MeanMort,color=Metro)) + geom_line()
+ggplot(City_NAR_Time, aes(x=Year,y=MeanRI,color=Metro)) + geom_line()
+
+
+Top_City_NAR <- City_NAR_Time %>% 
+                filter(Metro %in% c("Altus, OK", 
+                                     "Evansville, IN-KY",
+                                     "Beaumont-Port Arthur, TX",
+                                     "Macon-Bibb County, GA",
+                                     "Cleveland-Elyria, OH"))
+ggplot(Top_City_NAR, aes(x=Year,y=MeanNAR,color=Metro)) + geom_line()
+ggplot(Top_City_NAR, aes(x=Year,y=MeanMort,color=Metro)) + geom_line()
+ggplot(Top_City_NAR, aes(x=Year,y=MeanRI,color=Metro)) + geom_line()
+
+Bottom_City_NAR <- City_NAR_Time %>% 
+                   filter(Metro %in% c("Key West, FL",
+                                     "San Francisco-Oakland-Berkeley, CA",
+                                     "Santa Maria-Santa Barbara, CA",
+                                     "Trenton-Princeton, NJ",
+                                     "Urban Honolulu, HI"))
+ggplot(Bottom_City_NAR, aes(x=Year,y=MeanNAR,color=Metro)) + geom_line()
+ggplot(Bottom_City_NAR, aes(x=Year,y=MeanMort,color=Metro)) + geom_line()
+ggplot(Bottom_City_NAR, aes(x=Year,y=MeanRI,color=Metro)) + geom_line()
+
+#### Our Metric
+
+# (RI + MonthMortgage) / Median_Income_USD
+# MonthMortgage / RI
+# Median_Income_USD / MonthMortgage
+# MonthMortgage - RI
+
+df_calculation <- df_calculation %>% 
+                    mutate(OurMetric = Median_Income_USD / MonthMortgage)
+
+model <- lm(OurMetric ~ RI + MonthMortgage, data=df_calculation)
+summary(model)  # R^2 = 0.152
+
+model <- lm(log(OurMetric) ~ log(RI) + log(MonthMortgage), data=df_calculation)
+summary(model)  # R^2 = 0.7989
+
+model <- lm(OurMetric ~ RI + MonthMortgage + Median_Income_USD, data=df_calculation)
+summary(model)  # R^2 = 0.3032
+
+model <- lm(NARAfford ~ RI + MonthMortgage + Median_Income_USD, data=df_calculation)
+summary(model)  # R^2 = 0.3031. Comparable, so a good sign! 
+
+model <- lm(log(OurMetric) ~ log(RI) + log(MonthMortgage) + log(Median_Income_USD), data=df_calculation)
+summary(model)  # R^2 = 1....Sooooo not reliable lmao
+
+NewCorrMatrix <- cor(na.omit(df_calculation[,-c(5:8)]))
+
+```
+
